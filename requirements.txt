@@ -1,0 +1,6 @@
+tensorflow-cpu>=2.20
+pandas>=2.0
+numpy>=1.26
+requests>=2.31
+beautifulsoup4>=4.12
+flask>=3.0

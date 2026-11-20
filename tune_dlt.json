@@ -1,0 +1,82 @@
+[
+  {
+    "window": 10,
+    "units": 32,
+    "dropout": 0.2,
+    "lr": 0.001,
+    "batch": 32,
+    "val_loss": 19.544700622558594
+  },
+  {
+    "window": 8,
+    "units": 128,
+    "dropout": 0.1,
+    "lr": 0.0003,
+    "batch": 128,
+    "val_loss": 19.547466278076172
+  },
+  {
+    "window": 8,
+    "units": 128,
+    "dropout": 0.1,
+    "lr": 0.0001,
+    "batch": 128,
+    "val_loss": 19.552385330200195
+  },
+  {
+    "window": 15,
+    "units": 32,
+    "dropout": 0.1,
+    "lr": 0.0001,
+    "batch": 32,
+    "val_loss": 19.55549430847168
+  },
+  {
+    "window": 5,
+    "units": 64,
+    "dropout": 0.1,
+    "lr": 0.001,
+    "batch": 64,
+    "val_loss": 19.556745529174805
+  },
+  {
+    "window": 5,
+    "units": 32,
+    "dropout": 0.3,
+    "lr": 0.0003,
+    "batch": 32,
+    "val_loss": 19.557706832885742
+  },
+  {
+    "window": 10,
+    "units": 32,
+    "dropout": 0.2,
+    "lr": 0.003,
+    "batch": 64,
+    "val_loss": 19.5579833984375
+  },
+  {
+    "window": 20,
+    "units": 64,
+    "dropout": 0.1,
+    "lr": 0.003,
+    "batch": 128,
+    "val_loss": 19.55937385559082
+  },
+  {
+    "window": 20,
+    "units": 64,
+    "dropout": 0.2,
+    "lr": 0.003,
+    "batch": 128,
+    "val_loss": 19.566938400268555
+  },
+  {
+    "window": 5,
+    "units": 64,
+    "dropout": 0.1,
+    "lr": 0.001,
+    "batch": 128,
+    "val_loss": 19.57183265686035
+  }
+]

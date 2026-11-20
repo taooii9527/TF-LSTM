@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TF-LSTM 开奖工作台</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"
+        onerror="window.__echartsFail=true"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="ball red">彩</span><span class="ball blue">析</span>
+    <div>
+      <h1>TF-LSTM 开奖工作台</h1>
+      <p class="dim">LSTM 预测 · 回测 · 调优 — 数据无信号, 仅供研究娱乐</p>
+    </div>
+  </div>
+  <div class="game-toggle" role="tablist" aria-label="彩种切换">
+    <button id="g-ssq" class="active" data-game="ssq">双色球</button>
+    <button id="g-dlt" data-game="dlt">大乐透</button>
+  </div>
+  <span id="health-badge" class="health" title="自检中…">
+    <span class="hdot"></span><span id="health-text">自检中…</span>
+  </span>
+</header>
+
+<div id="echarts-warn" class="banner hidden">图表库加载失败 — 表格与数据仍可正常查看</div>
+
+<nav class="tabs" role="tablist" aria-label="页面切换">
+  <button class="active" data-tab="overview" role="tab">数据总览</button>
+  <button data-tab="pipeline" role="tab">流程</button>
+  <button data-tab="backtest" role="tab">回测</button>
+  <button data-tab="tune" role="tab">调优</button>
+</nav>
+
+<main>
+  <!-- 数据总览 -->
+  <section id="tab-overview" class="tab-panel active">
+    <div id="ov-empty" class="empty hidden">
+      <p>本地暂无缓存数据</p>
+      <button class="btn primary" onclick="runTask('fetch')">抓取数据</button>
+    </div>
+    <div id="ov-body" class="hidden">
+      <div class="kpi-row" id="ov-kpis"></div>
+      <div class="grid-2">
+        <div class="card"><h3>奇偶比分布 <span class="dim small">柱=实际期数 · 橙线=理论期望</span></h3><div class="chart" id="chart-parity"></div></div>
+        <div class="card"><h3>大小比分布 <span class="dim small">柱=实际期数 · 橙线=理论期望</span></h3><div class="chart" id="chart-size"></div></div>
+      </div>
+      <div class="card"><h3>红球和值走势 <span class="dim small">最近 300 期 · 含 20 期均线</span></h3><div class="chart tall" id="chart-sum"></div></div>
+      <div class="card">
+        <h3>历史开奖 <span class="dim small">最近 50 期, 可滚动</span></h3>
+        <div class="scroll-y"><table class="draws" id="ov-recent"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 流程 -->
+  <section id="tab-pipeline" class="tab-panel">
+    <div class="card">
+      <h3>流程可视化 <span class="dim small" id="flow-task-label">predict — 预测下一期</span></h3>
+      <div id="flow-diagram" class="flow"></div>
+      <div id="flow-progress" class="flow-progress"></div>
+    </div>
+    <div class="grid-2 pipeline-grid">
+      <div class="card">
+        <h3>任务控制</h3>
+        <div class="form">
+          <label>任务
+            <select id="f-task">
+              <option value="predict">predict — 预测下一期</option>
+              <option value="backtest">backtest — 滚动回测</option>
+              <option value="tune">tune — 随机搜索调参</option>
+              <option value="fetch">fetch — 仅刷新数据</option>
+            </select>
+          </label>
+          <div class="param-grid" id="f-params"></div>
+          <button id="btn-run" class="btn primary" onclick="onRun()">运行任务</button>
+          <p id="run-hint" class="dim small"></p>
+        </div>
+      </div>
+      <div class="card">
+        <h3>最新预测结果</h3>
+        <div id="pred-result" class="pred-result"><p class="dim">暂无预测记录</p></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <h3>热温冷分析 <span class="dim small">近 30 期出现次数分档 · 下标为当前遗漏期数 · <span id="ana-next-no"></span>期</span></h3>
+        <div id="ana-empty" class="empty hidden"><p id="ana-empty-msg">暂无数据</p></div>
+        <div id="ana-heat" class="hidden">
+          <p class="dim small" style="margin:0 0 6px">红球 (1–<span id="ana-red-max"></span>)</p>
+          <div id="heat-red" class="heat-row"></div>
+          <p class="dim small" style="margin:12px 0 6px">蓝球</p>
+          <div id="heat-blue" class="heat-row"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>模型形态参考 <span class="dim small">下期概率蒙特卡洛模拟 500 组</span></h3>
+        <div id="shape-chips" class="shape-row"></div>
+        <h3 style="margin-top:14px">红球推荐指数 Top-8 <span class="dim small">模拟中出现频率</span></h3>
+        <div class="chart" id="chart-rec" style="height:230px"></div>
+        <h3 style="margin-top:10px">蓝球推荐 Top-3</h3>
+        <div id="rec-blue" class="balls"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>预测战绩 <span class="dim small">predict.rec 历史预测 vs 实际开奖对照</span></h3>
+      <div id="rec-empty" class="empty hidden"><p>暂无预测记录</p></div>
+      <div class="scroll-y" style="max-height:320px"><table class="draws" id="rec-table"></table></div>
+    </div>
+    <div class="card">
+      <h3>运行日志</h3>
+      <pre id="log-console" class="log-console" aria-live="polite"></pre>
+    </div>
+  </section>
+
+  <!-- 回测 -->
+  <section id="tab-backtest" class="tab-panel">
+    <div id="bt-empty" class="empty hidden">
+      <p>暂无回测数据</p>
+      <button class="btn primary" onclick="switchTab('pipeline');runTask('backtest')">去运行一次回测</button>
+    </div>
+    <div id="bt-body" class="hidden">
+      <div class="kpi-row" id="bt-kpis"></div>
+      <div class="card">
+        <h3>期望账本 <span class="dim small">若回测期每期买 1 注(2元) · 一/二等奖按浮动近似值</span>
+          <span id="ledger-note" class="dim small"></span></h3>
+        <div id="ledger-chips" class="shape-row"></div>
+      </div>
+      <div class="card"><h3>逐期红球命中 <span class="dim small">虚线为随机期望</span></h3><div class="chart" id="chart-bt"></div></div>
+      <div class="grid-2">
+        <div class="card"><h3>红球命中分布</h3><div class="chart" id="chart-bt-red"></div></div>
+        <div class="card"><h3>蓝球命中分布</h3><div class="chart" id="chart-bt-blue"></div></div>
+      </div>
+      <div class="card">
+        <h3>逐期明细</h3>
+        <table class="draws" id="bt-table"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 调优 -->
+  <section id="tab-tune" class="tab-panel">
+    <div id="tn-empty" class="empty hidden">
+      <p>暂无调优结果</p>
+      <button class="btn primary" onclick="switchTab('pipeline');runTask('tune')">去运行一次调优</button>
+    </div>
+    <div id="tn-body" class="hidden">
+      <div class="card" id="tn-best"></div>
+      <div class="card"><h3>各 trial 的 val_loss</h3><div class="chart" id="chart-tune"></div></div>
+      <div class="card">
+        <h3>参数明细 <span class="dim small">按 val_loss 升序</span></h3>
+        <table class="draws" id="tn-table"></table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot dim">
+  彩票开奖为独立随机事件, 本工具输出不构成任何投注建议 · 数据来源 500.com
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

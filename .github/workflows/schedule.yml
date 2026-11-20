@@ -1,0 +1,56 @@
+# 定时预测/校对闭环 (GitHub Actions 版调度)
+#
+# 北京时间 20:00-02:45 每 15 分钟一轮:
+#   预测窗: 双色球 周二/四/日 21:15、大乐透 周一/三/六 21:25, 开奖前 45min 自动预测
+#   校对窗: 开奖后 40min~6h, 拉取新开奖并校对历史预测 -> verify.csv
+# 幂等: scheduler_state.json + verify.csv 去重, cron 重复/补跑安全。
+# 状态持久化: 直接 commit 回仓库。
+name: scheduler
+
+on:
+  schedule:
+    - cron: '*/15 12-18 * * *'   # UTC 12:00-18:45 = 北京 20:00-02:45
+  workflow_dispatch:              # 手动触发(调试用)
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scheduler
+  cancel-in-progress: false       # 不取消排队轮次, 靠幂等防重
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Shanghai           # datetime.now() 按北京时间判定开奖窗
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 单轮调度(预测/校对)
+        run: python -m lottery.scheduler --once
+
+      - name: 渲染 README 看板与 SVG 卡片
+        run: python -m lottery.readme_card
+
+      - name: 回传状态与产物
+        run: |
+          git config user.name  "lottery-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add README.md cards/ verify.csv predict.rec scheduler_state.json \
+                  scheduler.log ssq.csv dlt.csv 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "无状态变更"
+          else
+            git commit -m "chore: scheduler tick $(date -u +%FT%TZ)"
+            git push
+          fi
