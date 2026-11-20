@@ -43,9 +43,9 @@ def svg_card(cfg, entry):
 
 
 def fmt_draw(row):
-    """verify.csv 一行的预测与开奖号码展示。"""
-    return (row['reds'] + ' | ' + row['blues'],
-            ' '.join(row['actual'].split()[:len(row['reds'].split())]) + ' | ' +
+    """verify.csv 一行的预测与开奖号码展示(全角｜, 避免撕裂表格)。"""
+    return (row['reds'] + ' ｜ ' + row['blues'],
+            ' '.join(row['actual'].split()[:len(row['reds'].split())]) + ' ｜ ' +
             ' '.join(row['actual'].split()[len(row['reds'].split()):]))
 
 
@@ -65,7 +65,7 @@ def render():
     vpath = ROOT / 'verify.csv'
     lines += ['', '## 📋 兑奖战绩 (开奖后自动校对)', '',
               '| 期号 | 彩种 | 预测 | 开奖 | 命中 | 奖金 |', '|---|---|---|---|---|---|']
-    total_prize = n = red_sum = blue_sum = 0
+    n = 0
     if vpath.exists():
         v = pd.read_csv(vpath).tail(15)
         for _, r in v[::-1].iterrows():
@@ -73,13 +73,14 @@ def render():
             lines.append(f'| {r["issue"]} | {r["game"]} | `{p}` | `{a}` '
                          f'| 红{r["red_hits"]} 蓝{r["blue_hits"]} | {r["prize"]}元 |')
         all_v = pd.read_csv(vpath)
-        n, total_prize = len(all_v), int(all_v['prize'].sum())
-        red_sum, blue_sum = all_v['red_hits'].mean(), all_v['blue_hits'].mean()
+        n = len(all_v)
 
     if n:
-        lines += ['', f'**汇总**: 已校对 {n} 注 · 投入 {2 * n} 元 · 中回 {total_prize} 元 · '
-                  f'红/注 {red_sum:.2f} 蓝/注 {blue_sum:.2f} '
-                  f'(随机基线: {BASELINE["ssq"]} / {BASELINE["dlt"]})']
+        lines += ['', f'**汇总** (随机基线: 双色球 {BASELINE["ssq"]} · 大乐透 {BASELINE["dlt"]}):']
+        for gname, sub in all_v.groupby('game'):
+            lines.append(f'- {LABELS.get(gname, gname)}: 校对 {len(sub)} 注 · '
+                         f'投入 {2 * len(sub)} 元 · 中回 {int(sub["prize"].sum())} 元 · '
+                         f'红/注 {sub["red_hits"].mean():.2f} 蓝/注 {sub["blue_hits"].mean():.2f}')
     else:
         lines += ['', '_尚无已开奖校对记录, 首个开奖日后自动更新_']
 
