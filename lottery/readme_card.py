@@ -1,8 +1,9 @@
-"""GitHub 首页(README)展示渲染: 最新预测 SVG 卡片 + 兑奖战绩表格。
+"""GitHub 首页(README)展示渲染: 分彩种 tab 看板 + 每期一行战绩。
 
 python -m lottery.readme_card
 读 predict.rec(各彩种最后块)与 verify.csv, 替换 README.md 中
 <!-- LOTTERY:START --> ~ <!-- LOTTERY:END --> 标记区块, 并生成 cards/*.svg。
+双色球/大乐透各一个 <details> 折叠 tab; 战绩每期一行(首组预测+合计奖金)。
 由 GitHub Actions 在每轮调度后调用, commit 回仓库实现首页自动更新。
 """
 
@@ -18,12 +19,12 @@ from lottery.scheduler import parse_rec    # noqa: E402
 
 RED, BLUE = '#d5281f', '#1f6fd5'
 BASELINE = {'ssq': '红 1.09 · 蓝 0.06', 'dlt': '红 0.71 · 蓝 0.33'}
-START, END = '<!-- LOTTERY:START -->', '<!-- LOTTERY:END -->'
 LABELS = {'ssq': '双色球', 'dlt': '大乐透'}
+START, END = '<!-- LOTTERY:START -->', '<!-- LOTTERY:END -->'
 
 
 def svg_card(cfg, entry):
-    """最新预测的号码球卡片: 红蓝单行排开(红区+间隔+蓝区), 高 32px。"""
+    """最新预测的号码球卡片: 红蓝单行排开, 球距统一(34px)保证对齐。"""
     balls = [(n, RED) for n in entry['reds']] + [(n, BLUE) for n in entry['blues']]
     w = 18 + len(entry['reds']) * 34 + 6 + len(entry['blues']) * 34
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="32">']
@@ -51,50 +52,42 @@ def fmt_draw(row):
 
 
 def render():
-    # 最新预测: 两彩种单行并排
-    cards = {}
+    import pandas as pd
+    vpath = ROOT / 'verify.csv'
+    all_v = pd.read_csv(vpath) if vpath.exists() else None
+
+    blocks = ['## 🎯 自动预测看板 (每开奖日自动出号 / 开奖后自动校对)', '']
     for cfg in GAMES.values():
         entries = parse_rec(cfg)
         if entries:
             best = entries[0]
             svg_card(cfg, best)
-            cards[cfg.name] = (LABELS[cfg.name], best['issue'])
-
-    def _cell(name):
-        if name not in cards:
-            return '—', '—'
-        label, issue = cards[name]
-        return f'**{label}** {issue}', f'![](cards/{name}.svg)'
-
-    c1, c2 = _cell('ssq'), _cell('dlt')
-    lines = ['## 🎯 最新预测 (每开奖日自动出号)', '',
-             '| 彩种·期号 | 预测号码 | 彩种·期号 | 预测号码 |',
-             '|---|---|---|---|',
-             f'| {c1[0]} | {c1[1]} | {c2[0]} | {c2[1]} |']
-
-    import pandas as pd
-    vpath = ROOT / 'verify.csv'
-    # 战绩表: 4 列紧凑布局, 最新在前
-    lines += ['', '## 📋 兑奖战绩 (开奖后自动校对, 最近 15 条)', '',
-              '| 期号 | 预测 → 开奖 | 命中 | 奖金 |', '|---|---|---|---|']
-    n = 0
-    if vpath.exists():
-        v = pd.read_csv(vpath).tail(15)
-        for _, r in v[::-1].iterrows():
-            p, a = fmt_draw(r)
-            lines.append(f'| {r["game"]} {r["issue"]} | `{p}` → `{a}` '
-                         f'| 红{r["red_hits"]} 蓝{r["blue_hits"]} | {r["prize"]}元 |')
-        all_v = pd.read_csv(vpath)
-        n = len(all_v)
-
-    if n:
-        lines += ['', f'**汇总** (随机基线: 双色球 {BASELINE["ssq"]} · 大乐透 {BASELINE["dlt"]}):']
-        for gname, sub in all_v.groupby('game'):
-            lines.append(f'- {LABELS.get(gname, gname)}: 校对 {len(sub)} 注 · '
-                         f'投入 {2 * len(sub)} 元 · 中回 {int(sub["prize"].sum())} 元 · '
-                         f'红/注 {sub["red_hits"].mean():.2f} 蓝/注 {sub["blue_hits"].mean():.2f}')
-    else:
-        lines += ['', '_尚无已开奖校对记录, 首个开奖日后自动更新_']
+            head = f'最新预测 **{best["issue"]} 期**: ![](cards/{cfg.name}.svg)'
+        else:
+            head = '_暂无预测, 首个开奖日调度后自动生成_'
+        lines = [head, '', '| 期号 | 预测 → 开奖 | 命中 | 奖金 |', '|---|---|---|---|']
+        if all_v is not None and len(all_v):
+            sub = all_v[all_v['game'] == cfg.name]
+            if len(sub):
+                issues = list(dict.fromkeys(sub['issue']))[-15:][::-1]
+                for issue in issues:            # 每期一行(首组预测, 合计奖金)
+                    g = sub[sub['issue'] == issue]
+                    r1 = g.iloc[0]
+                    p, a = fmt_draw(r1)
+                    lines.append(f'| {issue} | `{p}` → `{a}` '
+                                 f'| 红{r1["red_hits"]} 蓝{r1["blue_hits"]} '
+                                 f'| {int(g["prize"].sum())}元 |')
+                lines += ['', f'**汇总**: 校对 {len(issues)} 期 · 投入 {2 * len(sub)} 元 · '
+                          f'中回 {int(sub["prize"].sum())} 元 · '
+                          f'红/注 {sub["red_hits"].mean():.2f} 蓝/注 {sub["blue_hits"].mean():.2f} '
+                          f'(基线 {BASELINE[cfg.name]})']
+        else:
+            lines += ['', '_尚无已开奖校对记录, 首个开奖日后自动更新_']
+        open_tag = '<details open>' if cfg.name == 'ssq' else '<details>'
+        blocks += [open_tag, f'<summary><b>{LABELS[cfg.name]} ({cfg.name})</b></summary>', '']
+        blocks += lines
+        blocks += ['', '</details>', '']
+    lines = blocks
 
     readme = ROOT / 'README.md'
     text = readme.read_text(encoding='utf-8')
@@ -104,7 +97,7 @@ def render():
     i, j = text.index(START), text.index(END)
     readme.write_text(text[:i + len(START)] + '\n' + '\n'.join(lines) + '\n\n' + text[j:],
                       encoding='utf-8')
-    print(f'README 已更新: {n} 条战绩')
+    print('README 已更新: 分彩种 tab 看板')
 
 
 if __name__ == '__main__':
