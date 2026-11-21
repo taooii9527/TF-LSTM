@@ -23,17 +23,18 @@ LABELS = {'ssq': '双色球', 'dlt': '大乐透'}
 
 
 def svg_card(cfg, entry):
-    """最新预测的号码球卡片 (红区上, 蓝/后区下)。"""
+    """最新预测的号码球卡片: 红蓝单行排开(红区+间隔+蓝区), 高 32px。"""
     balls = [(n, RED) for n in entry['reds']] + [(n, BLUE) for n in entry['blues']]
-    w = 18 + len(entry['reds']) * 34 + 10 + len(entry['blues']) * 34
-    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="64">']
+    w = 18 + len(entry['reds']) * 34 + 6 + len(entry['blues']) * 34
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="32">']
     x = 18
-    for n, color in balls:
-        parts.append(f'<circle cx="{x}" cy="{20 if color == RED else 44}" r="14" '
-                     f'fill="{color}"/>'
-                     f'<text x="{x}" y="{24 if color == RED else 48}" text-anchor="middle" '
-                     f'font-size="12" fill="#fff" font-family="monospace">{n:02d}</text>')
-        x += 34 if color == RED else 30
+    for i, (n, color) in enumerate(balls):
+        if i == len(entry['reds']):
+            x += 6  # 红蓝区间隔
+        parts.append(f'<circle cx="{x}" cy="16" r="14" fill="{color}"/>'
+                     f'<text x="{x}" y="20" text-anchor="middle" font-size="12" '
+                     f'fill="#fff" font-family="monospace">{n:02d}</text>')
+        x += 34
     parts.append('</svg>')
     out = ROOT / 'cards'
     out.mkdir(exist_ok=True)
@@ -50,27 +51,38 @@ def fmt_draw(row):
 
 
 def render():
-    lines = ['## 🎯 最新预测 (每开奖日自动出号)', '',
-             '| 彩种 | 期号 | 预测号码 |', '|---|---|---|']
+    # 最新预测: 两彩种单行并排
+    cards = {}
     for cfg in GAMES.values():
         entries = parse_rec(cfg)
-        if not entries:
-            continue
-        best = max(entries, key=lambda e: 0)  # 最后块首组
-        svg_card(cfg, best)
-        lines.append(f'| {LABELS[cfg.name]} | {best["issue"]} | '
-                     f'![](cards/{cfg.name}.svg) |')
+        if entries:
+            best = entries[0]
+            svg_card(cfg, best)
+            cards[cfg.name] = (LABELS[cfg.name], best['issue'])
+
+    def _cell(name):
+        if name not in cards:
+            return '—', '—'
+        label, issue = cards[name]
+        return f'**{label}** {issue}', f'![](cards/{name}.svg)'
+
+    c1, c2 = _cell('ssq'), _cell('dlt')
+    lines = ['## 🎯 最新预测 (每开奖日自动出号)', '',
+             '| 彩种·期号 | 预测号码 | 彩种·期号 | 预测号码 |',
+             '|---|---|---|---|',
+             f'| {c1[0]} | {c1[1]} | {c2[0]} | {c2[1]} |']
 
     import pandas as pd
     vpath = ROOT / 'verify.csv'
-    lines += ['', '## 📋 兑奖战绩 (开奖后自动校对)', '',
-              '| 期号 | 彩种 | 预测 | 开奖 | 命中 | 奖金 |', '|---|---|---|---|---|---|']
+    # 战绩表: 4 列紧凑布局, 最新在前
+    lines += ['', '## 📋 兑奖战绩 (开奖后自动校对, 最近 15 条)', '',
+              '| 期号 | 预测 → 开奖 | 命中 | 奖金 |', '|---|---|---|---|']
     n = 0
     if vpath.exists():
         v = pd.read_csv(vpath).tail(15)
         for _, r in v[::-1].iterrows():
             p, a = fmt_draw(r)
-            lines.append(f'| {r["issue"]} | {r["game"]} | `{p}` | `{a}` '
+            lines.append(f'| {r["game"]} {r["issue"]} | `{p}` → `{a}` '
                          f'| 红{r["red_hits"]} 蓝{r["blue_hits"]} | {r["prize"]}元 |')
         all_v = pd.read_csv(vpath)
         n = len(all_v)
